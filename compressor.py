@@ -16,9 +16,10 @@ uploaded_file = st.file_uploader("Upload an Image", type=["jpg", "jpeg", "png"])
 if uploaded_file is not None:
     original_image = Image.open(uploaded_file).convert("RGB")
     orig_w, orig_h = original_image.size
+    orig_size_kb = uploaded_file.size / 1024
     
     st.markdown("### 1. Original Image")
-    st.image(original_image, caption=f"Original ({orig_w}x{orig_h})", use_container_width=True)
+    st.image(original_image, caption=f"Original ({orig_w}x{orig_h}) | Size: {orig_size_kb:.1f} KB", use_container_width=True)
     
     st.sidebar.header("Processing Parameters")
     quality = st.sidebar.slider("Compression Quality", 1, 100, 10)
@@ -33,10 +34,11 @@ if uploaded_file is not None:
     buffer = io.BytesIO()
     small_image.save(buffer, format="JPEG", quality=quality)
     compressed_image = Image.open(buffer).convert("RGB")
+    comp_size_kb = len(buffer.getvalue()) / 1024
     
     st.markdown("---")
     st.markdown("### 2. Compressed Image")
-    st.image(compressed_image, caption=f"Compressed and Downscaled ({down_w}x{down_h}, Q={quality})", use_container_width=True)
+    st.image(compressed_image, caption=f"Compressed and Downscaled ({down_w}x{down_h}, Q={quality}) | Size: {comp_size_kb:.1f} KB", use_container_width=True)
     
     # 3. Retrieve and Restore Features (Enhancement)
     # Upscale back to original resolution using Lanczos (high quality to preserve details)
@@ -54,14 +56,21 @@ if uploaded_file is not None:
     
     st.markdown("---")
     st.markdown("### 3. Improved Image (Restored Features)")
-    st.image(improved_image, caption=f"Restored & Upscaled ({orig_w}x{orig_h}) | Estimated Final Size: {enh_size_kb:.1f} KB", use_container_width=True)
+    st.image(improved_image, caption=f"Restored & Upscaled ({orig_w}x{orig_h}) | Size: {enh_size_kb:.1f} KB", use_container_width=True)
     
     # Calculate metrics
     orig_np = np.array(original_image)
     impr_np = np.array(improved_image)
     
     st.markdown("---")
-    st.markdown("### 4. Metrics Comparison (Original vs Improved)")
+    st.markdown("### 4. Lost Features (Difference Map)")
+    # Calculate the absolute difference between original and improved to find lost features
+    diff = np.abs(orig_np.astype(np.int16) - impr_np.astype(np.int16))
+    diff_vis = np.clip(diff * 5, 0, 255).astype(np.uint8) # Amplify for better visibility
+    st.image(diff_vis, caption="Lost Features (Amplified Difference)", use_container_width=True, clamp=True)
+    
+    st.markdown("---")
+    st.markdown("### 5. Metrics Comparison (Original vs Improved)")
     
     m_val = mse(orig_np, impr_np)
     p_val = psnr(orig_np, impr_np, data_range=255)
@@ -78,8 +87,6 @@ if uploaded_file is not None:
         quality_lost = (1.0 - s_val) * 100
         quality_retained = s_val * 100
         
-        orig_size_kb = uploaded_file.size / 1024
-        comp_size_kb = len(buffer.getvalue()) / 1024
         size_saved = ((orig_size_kb - comp_size_kb) / orig_size_kb) * 100 if orig_size_kb > 0 else 0
         
         st.info(f"**Simple Breakdown:**\n\n"
